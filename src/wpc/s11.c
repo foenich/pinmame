@@ -88,10 +88,10 @@ const struct core_dispLayout s11_dispS11b2[] = {
 
 #ifdef RTMPIN
 static int serbus;
-extern struct RGBLedMatrixOptions matrix_options;
-extern struct RGBLedRuntimeOptions runtime_options;
-extern struct RGBLedMatrix  *matrix;
-extern struct LedCanvas *offscreen_canvas;
+struct RGBLedMatrixOptions matrix_options;
+struct RGBLedRuntimeOptions runtime_options;
+struct RGBLedMatrix  *matrix;
+struct LedCanvas *offscreen_canvas;
 #endif
 
 
