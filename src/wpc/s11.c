@@ -22,6 +22,17 @@
 
 #define FIXMUX // DataEast Playboy 35th fix
 
+#ifdef RTMPIN
+#include <fcntl.h> // Contains file controls like O_RDWR
+#include <errno.h> // Error integer and strerror() function
+#include <termios.h> // Contains POSIX terminal control definitions
+#include <unistd.h> // write(), read(), close()
+#include <stdio.h>
+#include <string.h>
+#include "led-matrix-c.h"
+#endif
+
+
 // TODO:
 // DE display layouts
 #define S11_PIA0 0
@@ -41,7 +52,7 @@
 // Ed Cheung: The IRQ on System 3-11 fires every 928 usec, which perfectly matches MAMEs 0x380+32!
 #define S11_IRQFREQ     (1000000.0/928.0)
 /*-- Smoothing values --*/
-#ifdef PROC_SUPPORT
+#ifdef PROC_SUPPORT || defined RTMPIN
 // TODO/PROC: Make variables out of these defines. Values depend on "-proc" switch.
 #define S11_SOLSMOOTH      1 /* Don't smooth values on real hardware */
 #define S11_LAMPSMOOTH     1
@@ -51,6 +62,8 @@
 #define S11_LAMPSMOOTH      2 /* Smooth the lamps over this number of VBLANKS */
 #define S11_DISPLAYSMOOTH   2 /* Smooth the display over this number of VBLANKS */
 #endif
+
+
 static MACHINE_STOP(s11);
 static NVRAM_HANDLER(s11);
 static NVRAM_HANDLER(de);
@@ -72,6 +85,15 @@ const struct core_dispLayout s11_dispS11a[] = {
 const struct core_dispLayout s11_dispS11b2[] = {
   DISP_SEG_16(0,CORE_SEG16),DISP_SEG_16(1,CORE_SEG16),{0}
 };
+
+#ifdef RTMPIN
+static int serbus;
+extern struct RGBLedMatrixOptions matrix_options;
+extern struct RGBLedRuntimeOptions runtime_options;
+extern struct RGBLedMatrix  *matrix;
+extern struct LedCanvas *offscreen_canvas;
+#endif
+
 
 /*----------------
 /  Local variables
@@ -142,6 +164,8 @@ static INTERRUPT_GEN(s11_vblank) {
     procTickleWatchdog();
   }
 #endif
+
+
   locals.vblankCount++;
   /*-- lamps --*/
   if ((locals.vblankCount % S11_LAMPSMOOTH) == 0) {
@@ -342,6 +366,8 @@ static INTERRUPT_GEN(s11_vblank) {
 		}
   }
 #endif  //PROC_SUPPORT
+
+
   /*-- display --*/
   if ((locals.vblankCount % S11_DISPLAYSMOOTH) == 0) {
     memcpy(coreGlobals.segments, locals.segments, sizeof(coreGlobals.segments));
@@ -359,10 +385,577 @@ static INTERRUPT_GEN(s11_vblank) {
       }
     }
 #endif //PROC_SUPPORT
+
+#ifdef RTMPIN
+  UINT8 digit,digitline;
+  UINT8 x,y;
+
+	for (y = 0; y < 33; y++) {
+		for (x = 0; x < 129; x++) {
+			coreGlobals.dotCol[y][x] = 0;
+		}
+	}
+  y = 2;
+  do
+  {
+    for (digit = 0; digit < 16; digit++) {
+      x = 8*digit;
+      if (y > 15)
+      {
+        digitline = digit + 20;
+      } else
+      {
+        digitline = digit;
+      }
+
+      if (coreGlobals.segments[digitline].w & 1)
+      {
+        coreGlobals.dotCol[y][x] = BRIGHT_CORNER;
+        coreGlobals.dotCol[y][x+1] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y][x+2] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y][x+3] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y][x+4] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y][x+5] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y][x+6] = BRIGHT_CORNER;
+      }
+      if (coreGlobals.segments[digitline].w & 2)
+      {
+        coreGlobals.dotCol[y][x+6] = BRIGHT_CORNER;
+        coreGlobals.dotCol[y+1][x+6] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+2][x+6] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+3][x+6] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+4][x+6] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+5][x+6] = BRIGHT_CORNER;
+      }
+      
+      if (coreGlobals.segments[digitline].w & 4)
+      {
+        coreGlobals.dotCol[y+5][x+6] = BRIGHT_CORNER;
+        coreGlobals.dotCol[y+6][x+6] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+7][x+6] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+8][x+6] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+9][x+6] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+10][x+6] = BRIGHT_CORNER;
+      }
+      if (coreGlobals.segments[digitline].w & 8)
+      {
+        coreGlobals.dotCol[y+10][x] = BRIGHT_CORNER;
+        coreGlobals.dotCol[y+10][x+1] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+10][x+2] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+10][x+3] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+10][x+4] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+10][x+5] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+10][x+6] = BRIGHT_CORNER;
+      }
+      if (coreGlobals.segments[digitline].w & 16)
+      {
+        coreGlobals.dotCol[y+5][x] = BRIGHT_CORNER;
+        coreGlobals.dotCol[y+6][x] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+7][x] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+8][x] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+9][x] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+10][x] = BRIGHT_CORNER;
+      }
+      if (coreGlobals.segments[digitline].w & 32)
+      {
+        coreGlobals.dotCol[y][x] = BRIGHT_CORNER;
+        coreGlobals.dotCol[y+1][x] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+2][x] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+3][x] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+4][x] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+5][x] = BRIGHT_CORNER;
+      }
+      if (coreGlobals.segments[digitline].w & 64)
+      {
+        coreGlobals.dotCol[y+5][x] = BRIGHT_CORNER;
+        coreGlobals.dotCol[y+5][x+1] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+5][x+2] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+5][x+3] = BRIGHT_CORNER;
+      }
+      if (coreGlobals.segments[digitline].w & 128)
+      {
+        coreGlobals.dotCol[y+10][x+7] = BRIGHT_STRAIGHT;
+      }
+      if (coreGlobals.segments[digitline].w & 256)
+      {
+        coreGlobals.dotCol[y+0][x+0] = BRIGHT_CORNER;
+        coreGlobals.dotCol[y+1][x+1] = BRIGHT_ANGULAR;
+        coreGlobals.dotCol[y+2][x+1] = BRIGHT_ANGULAR;
+        coreGlobals.dotCol[y+2][x+2] = BRIGHT_ALIASING;
+        coreGlobals.dotCol[y+3][x+1] = BRIGHT_ALIASING;
+        coreGlobals.dotCol[y+3][x+2] = BRIGHT_ANGULAR;
+        coreGlobals.dotCol[y+4][x+2] = BRIGHT_ANGULAR;
+        coreGlobals.dotCol[y+5][x+3] = BRIGHT_CORNER;
+      }
+      if (coreGlobals.segments[digitline].w & 512)
+      {
+        coreGlobals.dotCol[y+1][x+3] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+2][x+3] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+3][x+3] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+4][x+3] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+5][x+3] = BRIGHT_CORNER;
+      }
+      if (coreGlobals.segments[digitline].w & 1024)
+      {
+        coreGlobals.dotCol[y+0][x+6] = BRIGHT_CORNER;
+        coreGlobals.dotCol[y+1][x+5] = BRIGHT_ANGULAR;
+        coreGlobals.dotCol[y+2][x+5] = BRIGHT_ANGULAR;
+        coreGlobals.dotCol[y+2][x+4] = BRIGHT_ALIASING;
+        coreGlobals.dotCol[y+3][x+4] = BRIGHT_ANGULAR;
+        coreGlobals.dotCol[y+3][x+5] = BRIGHT_ALIASING;
+        coreGlobals.dotCol[y+4][x+4] = BRIGHT_ANGULAR;
+        coreGlobals.dotCol[y+5][x+3] = BRIGHT_CORNER;
+      }
+      if (coreGlobals.segments[digitline].w & 2048)
+      {
+        coreGlobals.dotCol[y+5][x+3] = BRIGHT_CORNER;
+        coreGlobals.dotCol[y+5][x+4] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+5][x+5] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+5][x+6] = BRIGHT_CORNER;
+      }
+      if (coreGlobals.segments[digitline].w & 4096)
+      {
+        coreGlobals.dotCol[y+10][x+6] = BRIGHT_CORNER;
+        coreGlobals.dotCol[y+9][x+5] = BRIGHT_ANGULAR;
+        coreGlobals.dotCol[y+8][x+5] = BRIGHT_ANGULAR;
+        coreGlobals.dotCol[y+8][x+4] = BRIGHT_ALIASING;
+        coreGlobals.dotCol[y+7][x+4] = BRIGHT_ANGULAR;
+        coreGlobals.dotCol[y+7][x+5] = BRIGHT_ALIASING;
+        coreGlobals.dotCol[y+6][x+4] = BRIGHT_ANGULAR;
+        coreGlobals.dotCol[y+5][x+3] = BRIGHT_CORNER;
+      }
+      if (coreGlobals.segments[digitline].w & 8192)
+      {
+        coreGlobals.dotCol[y+5][x+3] = BRIGHT_CORNER;
+        coreGlobals.dotCol[y+6][x+3] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+7][x+3] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+8][x+3] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+9][x+3] = BRIGHT_STRAIGHT;
+    }
+      if (coreGlobals.segments[digitline].w & 16384)
+      {
+        coreGlobals.dotCol[y+10][x+0] = BRIGHT_CORNER;
+        coreGlobals.dotCol[y+9][x+1] = BRIGHT_ANGULAR;
+        coreGlobals.dotCol[y+8][x+1] = BRIGHT_ANGULAR;
+        coreGlobals.dotCol[y+8][x+2] = BRIGHT_ALIASING;
+        coreGlobals.dotCol[y+7][x+2] = BRIGHT_ANGULAR;
+        coreGlobals.dotCol[y+7][x+1] = BRIGHT_ALIASING;
+        coreGlobals.dotCol[y+6][x+2] = BRIGHT_ANGULAR;
+        coreGlobals.dotCol[y+5][x+3] = BRIGHT_CORNER;
+      }
+      if (coreGlobals.segments[digitline].w & 32768)
+      {
+        coreGlobals.dotCol[y+9][x+7] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+11][x+6] = BRIGHT_STRAIGHT;
+        coreGlobals.dotCol[y+11][x+7] = BRIGHT_CORNER;
+      }
+    }
+    y += 16;
+  }
+  while (y < 32);
+
+
+	for (int yy = 0; yy < 33; yy++) {
+		for (int xx = 0; xx < 129; xx++) {
+			UINT8 pixel = (coreGlobals.dotCol[yy][xx]) * 1;
+			led_canvas_set_pixel(offscreen_canvas, xx, yy, pixel, 0, 0);  // only R no G or B
+		}
+	}
+	offscreen_canvas = led_matrix_swap_on_vsync(matrix, offscreen_canvas);
+#endif
+
+
+
     coreGlobals.diagnosticLed = locals.diagnosticLed;
     locals.diagnosticLed = 0;
   }
   core_updateSw(locals.ssEn);
+
+
+#ifdef RTMPIN
+/* This function is called in rhythm 12ms 21ms 12ms 21ms ..., sometimes also values in between 12ms and 21ms 
+   ohne X11 alle 8 ms, kaum vorhersagbar. Ohne X11 und ohne sound (per padsp) kommen sogar 2 Aufrufe unmittelbar
+   hintereinander, daher darf nur jeder 2. Aufruf zum senden des seriellen Frames genutzt werden. 
+   Mit Sound (per padsp) fehlen zwischendurch ein paar frames, ist aber unkritisch
+   Hinweis: hatte den Code vorher in "static SWITCH_UPDATE(s11)" untergebracht - aber gleiches Verhalten wie hier */
+
+/* Receive switch status from nodes, write solnoids, flashers and lamps to nodes  */
+
+/* Address nodes with first 4 bits, next 4 bits is length of data packet in bytes
+ * excluding first byte (addr&length)
+ */
+
+/* Node addressing starts with 0.
+ * 15 is reserved for broadcast (not used yet),
+ * 14 is used for receiving the node-status (until now only the switch status)
+ * other free addresses might be used for special commands like
+ * initialising (be aware to adapt the number of MaxNodes)
+ * First the receive-buffer is read to get the node-status from last cycle,
+ * then data packets are sent per serial line followed by the special address 14 to 
+ * make the nodes send their status one after the other (timing managed by nodes,
+ * PI has to be quiet until next cycle).Half duplex as we use RS485.
+ */
+	unsigned char toNode[17]; /* addr&length + data (max 16) */
+	unsigned char fromNodes[14*2]; /* MaxNodes * 2 bytes (fix) */
+	unsigned char tmpShift;	/* helper for bit-shifting*/
+  unsigned char nr_received = 0;
+
+if ((locals.vblankCount % 2) == 0) {    
+
+/* read the serial buffer to get the nodes status form last cycle */
+  nr_received = read(serbus, &fromNodes, sizeof(fromNodes));
+  if (nr_received > 0) {
+
+/* debug: printf("received byte 4: %u \n", fromNodes[3]);*/
+
+/* Template Dedicated switches:
+ * left coin, center coin, right coin, fourth coin, escape, down, up, enter */
+        tmpShift = 0;
+/*        tmpShift |= ((fromNodes[0]>>2)&1)<<7;
+        tmpShift |= ((fromNodes[0]>>2)&1)<<6;
+        tmpShift |= ((fromNodes[0]>>2)&1)<<5;
+        tmpShift |= ((fromNodes[0]>>2)&1)<<4;*/
+/*        tmpShift |= ((fromNodes[0]>>3)&1)<<3;
+        tmpShift |= ((fromNodes[0]>>2)&1)<<2;
+        tmpShift |= ((fromNodes[0]>>1)&1)<<1;
+        tmpShift |= ((fromNodes[0]>>0)&1)<<0;*/
+/*        coreGlobals.swMatrix[CORE_COINDOORSWCOL] = tmpShift; */ /* no more node-inputs available -> setup pin per VNC */
+
+/* Column 1: Line 1 = LSB; Line 8 = MSB */
+        tmpShift = 0;
+        tmpShift |= ((fromNodes[5]>>3)&1); /* Row 1 */
+        tmpShift |= ((fromNodes[3]>>4)&1)<<2; /* Row 3 */
+        coreGlobals.swMatrix[1] = tmpShift;
+
+/* Column 2: Line 1 = LSB; Line 8 = MSB */
+        tmpShift = 0;
+        tmpShift |= ((fromNodes[1]>>1)&1); /* Row 1 */
+        tmpShift |= ((fromNodes[1]>>3)&1)<<2; /* Row 3 */
+        tmpShift |= ((fromNodes[1]>>6)&1)<<3; /* Row 4 */
+        tmpShift |= ((fromNodes[1]>>5)&1)<<4; /* Row 5 */
+        tmpShift |= ((fromNodes[2]>>2)&1)<<5; /* Row 6 */
+        tmpShift |= ((fromNodes[2]>>3)&1)<<7; /* Row 8 */
+        coreGlobals.swMatrix[2] = tmpShift;
+
+/* Column 3 */
+        tmpShift = 0;
+        tmpShift |= ((fromNodes[4]>>1)&1); /* Row 1 */
+        tmpShift |= ((fromNodes[1]>>0)&1)<<1; /* Row 2 */
+        tmpShift |= ((fromNodes[1]>>4)&1)<<2; /* Row 3 */
+        tmpShift |= ((fromNodes[1]>>2)&1)<<3; /* Row 4 */
+        tmpShift |= ((fromNodes[0]>>7)&1)<<5; /* Row 6 */
+        tmpShift |= ((fromNodes[2]>>4)&1)<<6; /* Row 7 */
+        tmpShift |= ((fromNodes[0]>>6)&1)<<7; /* Row 8 */
+        coreGlobals.swMatrix[3] = tmpShift;
+
+/* Column 4 */
+        tmpShift = 0;
+        tmpShift |= ((fromNodes[3]>>5)&1); /* Row 1 */
+        tmpShift |= ((fromNodes[3]>>6)&1)<<1; /* Row 2 */
+        tmpShift |= ((fromNodes[3]>>7)&1)<<2; /* Row 3 */
+        tmpShift |= ((fromNodes[2]>>0)&1)<<3; /* Row 4 */
+        tmpShift |= ((fromNodes[2]>>1)&1)<<4; /* Row 5 */
+        tmpShift |= ((fromNodes[0]>>5)&1)<<5; /* Row 6 */
+        tmpShift |= ((fromNodes[0]>>4)&1)<<6; /* Row 7 */
+        tmpShift |= ((fromNodes[0]>>3)&1)<<7; /* Row 8 */
+        coreGlobals.swMatrix[4] = tmpShift;
+
+/* Column 5 */
+        tmpShift = 0;
+        tmpShift |= ((fromNodes[3]>>1)&1); /* Row 1 */
+        tmpShift |= ((fromNodes[1]>>7)&1)<<1; /* Row 2 */
+        tmpShift |= ((fromNodes[2]>>5)&1)<<2; /* Row 3 */
+        tmpShift |= ((fromNodes[2]>>7)&1)<<3; /* Row 4 */
+        tmpShift |= ((fromNodes[2]>>6)&1)<<4; /* Row 5 */
+        tmpShift |= ((fromNodes[5]>>1)&1)<<5; /* Row 6 */
+        tmpShift |= ((fromNodes[5]>>0)&1)<<6; /* Row 7 */
+        tmpShift |= ((fromNodes[3]>>2)&1)<<7; /* Row 8 */
+        coreGlobals.swMatrix[5] = tmpShift;
+
+/* Column 6 */
+        tmpShift = 0;
+        tmpShift |= ((fromNodes[4]>>2)&1); /* Row 1 */
+        tmpShift |= ((fromNodes[4]>>3)&1)<<1; /* Row 2 */
+        tmpShift |= ((fromNodes[4]>>4)&1)<<2; /* Row 3 */
+        tmpShift |= ((fromNodes[4]>>0)&1)<<3; /* Row 4 */
+        tmpShift |= ((fromNodes[5]>>7)&1)<<5; /* Row 6 */
+        tmpShift |= ((fromNodes[5]>>6)&1)<<6; /* Row 7 */
+        tmpShift |= ((fromNodes[5]>>5)&1)<<7; /* Row 8 */
+        coreGlobals.swMatrix[6] = tmpShift;
+
+/* Column 7 */
+        tmpShift = 0;
+        tmpShift |= ((fromNodes[4]>>7)&1); /* Row 1 */
+        tmpShift |= ((fromNodes[4]>>6)&1)<<1; /* Row 2 */
+        tmpShift |= ((fromNodes[4]>>5)&1)<<2; /* Row 3 */
+        tmpShift |= ((fromNodes[5]>>2)&1)<<3; /* Row 4 */
+        tmpShift |= ((fromNodes[0]>>0)&1)<<4; /* Row 5 */
+        tmpShift |= ((fromNodes[0]>>1)&1)<<5; /* Row 6 */
+        tmpShift |= ((fromNodes[3]>>0)&1)<<7; /* Row 8 */
+        coreGlobals.swMatrix[7] = tmpShift;
+
+/* Column 8 */
+        tmpShift = 0;
+        tmpShift |= ((fromNodes[0]>>2)&1)<<0; /* Row 1 */
+        tmpShift |= ((fromNodes[3]>>3)&1)<<1; /* Row 2 */
+        coreGlobals.swMatrix[8] = tmpShift;
+
+
+    }
+
+/* set outputs */
+
+  tcflush(serbus, TCIOFLUSH);
+
+/* Node 0 */
+	toNode[0] = 0x07; /* node 0, 7 data bytes */
+
+	/* Solenoids nr. in manual - 1 */
+	tmpShift = 0;
+	tmpShift = 1<<7; /* Enable right flipper; tmpShift |= ((coreGlobals.solenoids>>4)&1); */
+	tmpShift |= ((coreGlobals.solenoids>>21)&1)<<6; /* magnet */
+	tmpShift |= ((coreGlobals.solenoids>>0)&1)<<5; /* outhole kicker */
+	tmpShift |= ((coreGlobals.solenoids>>1)&1)<<4; /* shooterlane feeder */
+	tmpShift |= 1<<3; /* Enable right Slingshot tmpShift |= ((coreGlobals.solenoids>>15)&1)<<3;*/
+	tmpShift |= ((coreGlobals.solenoids>>7)&1)<<2; /* lock diverter */
+	tmpShift |= ((coreGlobals.solenoids>>13)&1)<<1; /* lock kickback */
+	tmpShift |= ((coreGlobals.solenoids>>5)&1)<<0; /* targets */
+	toNode[1] = tmpShift;
+
+
+/* Template for GI(String) 1, 2, 3, 4, 5, nc, nc, nc */
+	tmpShift = 0;
+/*	tmpShift |= ((coreGlobals.solenoids2>>7)&1);*/
+/*	tmpShift |= ((coreGlobals.solenoids2>>8)&1)<<1;*/
+/*	tmpShift |= ((coreGlobals.solenoids2>>9)&1)<<2;*/
+/*	tmpShift |= ((coreGlobals.gi[0]>>3)&1)<<3; */ /* if on coreGlobal.gi[0] = 8, off = 0 */
+/*	tmpShift |= ((coreGlobals.gi[1]>>3)&1)<<4;*/
+/*	tmpShift |= ((coreGlobals.lampMatrix[6]>>0)&1)<<6; nc */
+/*	tmpShift |= ((coreGlobals.lampMatrix[7]>>0)&1)<<7; nc */
+/*	toNode[5] = tmpShift; */
+
+
+	/* Lamp[col-1]>>(row-1)  */
+	tmpShift = 0;
+	tmpShift |= 0;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1)<<6;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1)<<5;
+	tmpShift |= ((coreGlobals.lampMatrix[4]>>2)&1)<<4;
+	tmpShift |= ((coreGlobals.lampMatrix[4]>>1)&1)<<3;
+	tmpShift |= ((coreGlobals.lampMatrix[4]>>0)&1)<<2;
+	tmpShift |= 0;
+	tmpShift |= ((coreGlobals.lampMatrix[2]>>5)&1);
+	toNode[2] = tmpShift;
+
+	/* Lamp[col-1]>>(row-1)  */
+	tmpShift = 0;
+	tmpShift |= ((coreGlobals.lampMatrix[6]>>6)&1)<<7;
+	tmpShift |= ((coreGlobals.lampMatrix[6]>>5)&1)<<6;
+	tmpShift |= ((coreGlobals.lampMatrix[6]>>0)&1)<<5;
+	tmpShift |= ((coreGlobals.lampMatrix[6]>>1)&1)<<4;
+	tmpShift |= ((coreGlobals.lampMatrix[6]>>2)&1)<<3;
+	tmpShift |= ((coreGlobals.lampMatrix[6]>>4)&1)<<2;
+	tmpShift |= ((coreGlobals.lampMatrix[6]>>3)&1)<<1;
+	tmpShift |= ((coreGlobals.solenoids>>23)&1);
+	toNode[3] = tmpShift;
+
+	/* Lamp[col-1]>>(row-1) */
+	tmpShift = 0;
+	tmpShift |= ((coreGlobals.lampMatrix[2]>>7)&1)<<7;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1)<<6;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1)<<5;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1)<<4;
+	tmpShift |= 0;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1)<<2;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1)<<1;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1);
+	toNode[4] = tmpShift;
+
+
+	/* Lamp[col-1]>>(row-1) */
+	tmpShift = 0;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1)<<7;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1)<<6;
+	tmpShift |= ((coreGlobals.lampMatrix[5]>>7)&1)<<5;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1)<<4;
+	tmpShift |= ((coreGlobals.lampMatrix[5]>>6)&1)<<3;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1)<<2;
+	tmpShift |= ((coreGlobals.lampMatrix[5]>>5)&1)<<1;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1);
+	toNode[5] = tmpShift;
+
+	/* Lamp[col-1]>>(row-1) */
+	tmpShift = 0;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1)<<7;
+	tmpShift |= ((coreGlobals.lampMatrix[5]>>3)&1)<<6;
+	tmpShift |= ((coreGlobals.lampMatrix[5]>>2)&1)<<5;
+	tmpShift |= ((coreGlobals.lampMatrix[5]>>1)&1)<<4;
+	tmpShift |= ((coreGlobals.lampMatrix[5]>>0)&1)<<3;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1)<<2;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1)<<1;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1);
+	toNode[6] = tmpShift;
+
+	/* Lamp[col-1]>>(row-1) */
+	tmpShift = 0;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1)<<7;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1)<<6;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1)<<5;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1)<<4;
+	toNode[7] = tmpShift;
+
+	write(serbus, toNode, 8); /* 7 bytes + addr&length */
+
+/* Node 1 */
+	toNode[0] = 0x18; /* node 1, 8 data bytes */
+
+	/* Solenoids:  nr. in manual - 1 */
+	tmpShift = 0;
+	tmpShift = 1<<7; /* Enable left flipper */
+	tmpShift |= ((coreGlobals.solenoids>>19)&1)<<6; /* kick back */
+	tmpShift |= 1<<5; /* enable lift sling */
+	tmpShift |= ((coreGlobals.solenoids>>12)&1)<<4; /* upper kick back */
+	tmpShift |= ((coreGlobals.solenoids>>3)&1)<<3; /* ball popper VOK */
+	tmpShift |= 1<<2; /* enable bumper left */
+	tmpShift |= 1<<1; /* enable bumper middle */
+	tmpShift |= 1<<0; /* enable bumper right */
+	toNode[1] = tmpShift;
+
+
+/* Template for GI(String) 1, 2, 3, 4, 5, nc, nc, nc */
+	tmpShift = 0;
+/*	tmpShift |= ((coreGlobals.solenoids2>>7)&1);*/
+/*	tmpShift |= ((coreGlobals.solenoids2>>8)&1)<<1;*/
+/*	tmpShift |= ((coreGlobals.solenoids2>>9)&1)<<2;*/
+/*	tmpShift |= ((coreGlobals.gi[0]>>3)&1)<<3; */ /* if on coreGlobal.gi[0] = 8, off = 0 */
+/*	tmpShift |= ((coreGlobals.gi[1]>>3)&1)<<4;*/
+/*	tmpShift |= ((coreGlobals.lampMatrix[6]>>0)&1)<<6; nc */
+/*	tmpShift |= ((coreGlobals.lampMatrix[7]>>0)&1)<<7; nc */
+/*	toNode[5] = tmpShift; */
+
+
+	/* Lamp[col-1]>>(row-1)  */
+	tmpShift = 0;
+	tmpShift |= ((coreGlobals.lampMatrix[4]>>7)&1)<<7;
+	tmpShift |= ((coreGlobals.lampMatrix[5]>>4)&1)<<6;
+	tmpShift |= ((coreGlobals.lampMatrix[6]>>7)&1)<<5;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1)<<4;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1)<<3;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1)<<2;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1)<<1;
+	tmpShift |= ((coreGlobals.lampMatrix[2]>>2)&1)<<0;
+	toNode[2] = tmpShift;
+
+	/* Lamp[col-1]>>(row-1)  */
+	tmpShift = 0;
+	tmpShift |= ((coreGlobals.lampMatrix[2]>>0)&1)<<7;
+	tmpShift |= ((coreGlobals.lampMatrix[1]>>1)&1)<<6;
+	tmpShift |= ((coreGlobals.lampMatrix[1]>>0)&1)<<5;
+	tmpShift |= ((coreGlobals.lampMatrix[7]>>5)&1)<<4;
+	tmpShift |= ((coreGlobals.lampMatrix[2]>>4)&1)<<3;
+	tmpShift |= ((coreGlobals.lampMatrix[7]>>7)&1)<<2;
+	tmpShift |= ((coreGlobals.lampMatrix[7]>>6)&1)<<1;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1);
+	toNode[3] = tmpShift;
+
+	/* Lamp[col-1]>>(row-1) */
+	tmpShift = 0;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1)<<7;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1)<<6;
+	tmpShift |= ((coreGlobals.lampMatrix[7]>>4)&1)<<5;
+	tmpShift |= ((coreGlobals.lampMatrix[1]>>5)&1)<<4;
+	tmpShift |= ((coreGlobals.lampMatrix[1]>>7)&1)<<3;
+	tmpShift |= ((coreGlobals.lampMatrix[2]>>1)&1)<<2;
+	tmpShift |= ((coreGlobals.lampMatrix[2]>>3)&1)<<1;
+	tmpShift |= ((coreGlobals.lampMatrix[1]>>4)&1)<<0;
+	toNode[4] = tmpShift;
+
+
+	/* Lamp[col-1]>>(row-1) */
+	tmpShift = 0;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1)<<7;
+	tmpShift |= ((coreGlobals.lampMatrix[5]>>4)&1)<<6;
+	tmpShift |= ((coreGlobals.lampMatrix[4]>>7)&1)<<5;
+	tmpShift |= ((coreGlobals.lampMatrix[3]>>7)&1)<<4;
+	tmpShift |= ((coreGlobals.lampMatrix[3]>>6)&1)<<3;
+	tmpShift |= ((coreGlobals.lampMatrix[3]>>5)&1)<<2;
+	tmpShift |= ((coreGlobals.lampMatrix[7]>>3)&1)<<1;
+	tmpShift |= ((coreGlobals.lampMatrix[1]>>6)&1)<<0;
+	toNode[5] = tmpShift;
+
+	/* Lamp[col-1]>>(row-1) */
+	tmpShift = 0;
+	tmpShift |= ((coreGlobals.lampMatrix[1]>>3)&1)<<7;
+	tmpShift |= ((coreGlobals.lampMatrix[1]>>2)&1)<<6;
+	tmpShift |= ((coreGlobals.lampMatrix[7]>>0)&1)<<5;
+	tmpShift |= ((coreGlobals.lampMatrix[7]>>1)&1)<<4;
+	tmpShift |= ((coreGlobals.lampMatrix[7]>>2)&1)<<3;
+	tmpShift |= ((coreGlobals.lampMatrix[4]>>5)&1)<<2;
+	tmpShift |= ((coreGlobals.lampMatrix[4]>>4)&1)<<1;
+	tmpShift |= ((coreGlobals.lampMatrix[4]>>3)&1)<<0;
+	toNode[6] = tmpShift;
+
+	/* Lamp[col-1]>>(row-1) */
+	tmpShift = 0;
+	tmpShift |= ((coreGlobals.lampMatrix[3]>>0)&1)<<7;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1)<<6;
+	tmpShift |= ((coreGlobals.lampMatrix[3]>>1)&1)<<5;
+	tmpShift |= ((coreGlobals.lampMatrix[3]>>2)&1)<<4;
+	tmpShift |= ((coreGlobals.lampMatrix[3]>>3)&1)<<3;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1)<<2;
+	tmpShift |= ((coreGlobals.solenoids>>10)&1)<<1;
+	tmpShift |= ((coreGlobals.lampMatrix[3]>>4)&1)<<0;
+	toNode[7] = tmpShift;
+
+	/* Lamp[col-1]>>(row-1) */
+	tmpShift = 0;
+	tmpShift |= ((coreGlobals.lampMatrix[2]>>6)&1)<<7;
+	tmpShift |= ((coreGlobals.lampMatrix[4]>>6)&1)<<6;
+	toNode[8] = tmpShift;
+
+	write(serbus, toNode, 9); /* 8 bytes + addr&length */
+
+/* Node 2 */
+	toNode[0] = 0x22; /* node 2, 2 data bytes */
+
+	/* Solenoids nr. in manual - 1 */
+	tmpShift = 0;
+	tmpShift = 1<<7; /* Enable upper flipper */
+	tmpShift |= ((coreGlobals.solenoids>>17)&1)<<6; /* ramp diverter */
+	tmpShift |= ((coreGlobals.solenoids>>30)&1)<<5; /* Flasher 7 */
+	tmpShift |= ((coreGlobals.solenoids>>29)&1)<<4; /* Flasher 6 */
+	tmpShift |= ((coreGlobals.solenoids>>28)&1)<<3; /* Flasher 5 */
+	tmpShift |= ((coreGlobals.solenoids>>27)&1)<<2; /* Flasher 4 */
+	tmpShift |= ((coreGlobals.solenoids>>26)&1)<<1; /* Flasher 3 */
+	tmpShift |= ((coreGlobals.solenoids>>25)&1)<<0; /* Flasher 2 */
+	toNode[1] = tmpShift;
+
+
+
+	/* Lamp[col-1]>>(row-1)  */
+	tmpShift = 0;
+	tmpShift |= ((coreGlobals.lampMatrix[0]>>0)&1)<<7;
+	tmpShift |= ((coreGlobals.lampMatrix[0]>>1)&1)<<6;
+	tmpShift |= ((coreGlobals.lampMatrix[0]>>2)&1)<<5;
+	tmpShift |= ((coreGlobals.lampMatrix[0]>>3)&1)<<4;
+	tmpShift |= ((coreGlobals.lampMatrix[0]>>4)&1)<<3;
+	tmpShift |= ((coreGlobals.lampMatrix[0]>>5)&1)<<2;
+	tmpShift |= ((coreGlobals.lampMatrix[0]>>6)&1)<<1;
+	tmpShift |= ((coreGlobals.lampMatrix[0]>>7)&1)<<0;
+	toNode[2] = tmpShift;
+
+	write(serbus, toNode, 3); /* 2 bytes + addr&length */
+
+
+/* when all data was sent, the special address 14 is used to 
+ * make the nodes send their staus
+ */
+  toNode[0] = 0xe0;
+  write(serbus, toNode, 1);  /* 1 byte (addr&length) */
+
+} /* of if ((locals.vblankCount % 2) == 0)  */
+#endif
+
 }
 
 /*---------------
@@ -706,14 +1299,17 @@ static SWITCH_UPDATE(s11) {
 		procGetSwitchEvents();
 #endif
 
+
 #ifndef LISY_SUPPORT
 //if we have LISY, all switches come from LISY (Matrix[0] has e.g. ADVANCE Button!
   if (inports) {
     coreGlobals.swMatrix[0] = (inports[S11_COMINPORT] & 0x7f00)>>8;
     // All the matrix switches come from the P-ROC, so we only want to read
     // the first column from the keyboard if we are not using the P-ROC
+#ifndef RTMPIN
 #ifndef PROC_SUPPORT
     coreGlobals.swMatrix[1] = inports[S11_COMINPORT];
+#endif
 #endif
   }
 #endif
@@ -790,7 +1386,95 @@ static MACHINE_INIT(s11) {
       sndbrd_1_init(core_gameData->hw.soundBoard, 1, memory_region(DE1S_ROMREGION), pia_5_cb1_w, NULL);
       break;
   }
+
+
+#ifdef RTMPIN
+
+/* init RGB panel */
+memset(&matrix_options, 0, sizeof(matrix_options));
+	matrix_options.disable_hardware_pulsing = 1;
+	matrix_options.hardware_mapping = "regular";
+	matrix_options.rows = 32;
+	matrix_options.cols = 64;
+	matrix_options.chain_length = 2;
+	matrix_options.parallel = 1;
+	matrix_options.led_rgb_sequence = "RBG";
+	matrix_options.limit_refresh_rate_hz = 60;
+	matrix_options.panel_type = "FM6126A";
+
+	runtime_options.gpio_slowdown = 4;
+
+	/* matrix = led_matrix_create(32, 128, 1); */
+	matrix = led_matrix_create_from_options_and_rt_options(&matrix_options, &runtime_options);
+	if (matrix == NULL) {
+		fprintf(stderr, "Failed to create matrix\n");
+		exit(1);
+	}
+
+	offscreen_canvas = led_matrix_create_offscreen_canvas(matrix);
+	if (offscreen_canvas == NULL)	{
+		fprintf(stderr, "Failed to allocate LED canvas\n");
+		exit(1);
+	}
+	int width, height;
+	led_canvas_get_size(offscreen_canvas, &width, &height);
+	printf("DMD width=%d height=%d\n", width, height);
+
+
+/* init UART */
+/* siehe https://blog.mbedded.ninja/programming/operating-systems/linux/linux-serial-ports-using-c-cpp/#examples */
+
+/*    char *portname = "/dev/serial0"; */
+    char *portname = "/dev/ttyUSB0";
+
+    /* open interface */
+    serbus = open(portname, O_RDWR);
+
+    if (serbus < 0) {
+        printf("Error opening %s: %s\n", portname, strerror(errno));
+        exit(1);
+    }
+
+
+    struct termios tty;
+
+    if (tcgetattr(serbus, &tty) < 0) {
+        printf("Error from tcgetattr: %s\n", strerror(errno));
+        exit(1);
+    }
+    tty.c_cflag &= ~PARENB; // Clear parity bit, disabling parity
+    tty.c_cflag &= ~CSTOPB; // Clear stop field, only one stop bit used in communication
+    tty.c_cflag &= ~CSIZE; // Clear all the size bits
+    tty.c_cflag |= CS8; // 8 bits per byte
+    tty.c_cflag &= ~CRTSCTS; // Disable RTS/CTS hardware flow control
+    tty.c_cflag |= CREAD | CLOCAL; // Turn on READ & ignore ctrl lines (CLOCAL = 1)
+    tty.c_lflag &= ~ICANON; // disable canonical mode
+    tty.c_lflag &= ~ECHO; // Disable echo
+    tty.c_lflag &= ~ECHOE; // Disable erasure
+    tty.c_lflag &= ~ECHONL; // Disable new-line echo
+    tty.c_lflag &= ~ISIG; // Disable interpretation of INTR, QUIT and SUSP
+    tty.c_iflag &= ~(IXON | IXOFF | IXANY);
+    tty.c_iflag &= ~(IGNBRK|BRKINT|PARMRK|ISTRIP|INLCR|IGNCR|ICRNL); // Disable any special handling of received bytes
+    tty.c_oflag &= ~OPOST; // Prevent special interpretation of output bytes (e.g. newline chars)
+    tty.c_oflag &= ~ONLCR; // Prevent conversion of newline to carriage return/line feed
+    tty.c_cc[VTIME] = 0;    // No blocking, return immediately with what is available.
+    tty.c_cc[VMIN] = 0;
+    // possible in Linux:B0,  B50,  B75,  B110,  B134,  B150,  B200, B300, B600, B1200, B1800, B2400, B4800, B9600, B19200, B38400, B57600, B115200, B230400, B460800
+    cfsetispeed(&tty, B115200);
+    cfsetospeed(&tty, B115200);
+    // Save tty settings, also checking for error
+    if (tcsetattr(serbus, TCSANOW, &tty) != 0) {
+        printf("Error %i from tcsetattr: %s\n", errno, strerror(errno));
+    }
+/* sleep bevore flush
+ * see https://stackoverflow.com/questions/13013387/clearing-the-serial-ports-buffer
+ */
+    usleep (10000);
+    tcflush(serbus, TCIOFLUSH);
+
+#endif
 }
+
 static MACHINE_INIT(s9pf) {
   pia_config(S11_PIA0, PIA_STANDARD_ORDERING, &s11_pia[0]);
   pia_config(S11_PIA1, PIA_STANDARD_ORDERING, &s11_pia[1]);
@@ -799,12 +1483,21 @@ static MACHINE_INIT(s9pf) {
   pia_config(S11_PIA4, PIA_STANDARD_ORDERING, &s11_pia[4]);
   pia_config(S11_PIA5, PIA_STANDARD_ORDERING, &s11_pia[5]);
   sndbrd_0_init(SNDBRD_S9S, 1, NULL, NULL, NULL);
+
+
+
 }
 static MACHINE_RESET(s11) {
   pia_reset();
 }
 static MACHINE_STOP(s11) {
   sndbrd_0_exit(); sndbrd_1_exit();
+
+#ifdef RTMPIN
+	close(serbus);
+#endif
+
+
 }
 
 /*---------------------------

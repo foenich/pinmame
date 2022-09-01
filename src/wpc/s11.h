@@ -252,5 +252,14 @@ DE_ALPHA1
 DE_ALPHA2
 DE_ALPHA3   LOWALPHA
 #endif
+
+#ifdef RTMPIN
+#define BRIGHT_STRAIGHT 255
+#define BRIGHT_ANGULAR 192
+#define BRIGHT_CORNER 96
+#define BRIGHT_ALIASING 16
+#endif /*RTMPIN */
+
+
 #endif /* INC_S11 */
 
