@@ -317,6 +317,11 @@ OBJS  += $(subst $(OBJ)/vidhrdw/vector.o, ,$(COREOBJS)) $(DRVLIBS) \
 
 MY_OBJDIRS = $(CORE_OBJDIRS) $(sort $(OBJDIRS))
 
+ifdef RTMPIN
+MY_LIBS += -lrgbmatrix -lpthread
+endif
+
+
 ##############################################################################
 # Begin of the real makefile.
 ##############################################################################
