@@ -1124,7 +1124,7 @@ static SWITCH_UPDATE(wpc) {
 	unsigned char tmpShift;	/* helper for bit-shifting*/
 	unsigned char nr_received = 0;
 
-if ((locals.vblankCount % 2) == 0) {    
+if ((wpclocals.vblankCount % 2) == 0) {    
 
 /* read the serial buffer to get the nodes status form last cycle */
   nr_received = read(serbus, &fromNodes, sizeof(fromNodes));
@@ -1217,9 +1217,9 @@ if ((locals.vblankCount % 2) == 0) {
         tmpShift |= ((fromNodes[1]>>3)&1)<<1; /* Row 2 */
         tmpShift |= ((fromNodes[1]>>3)&1)<<2; /* Row 3 */
         tmpShift |= ((fromNodes[1]>>3)&1)<<3; /* Row 4 */
-        tmpShift |= ((fromNodes[1]>>3)&1)<<4; /* Row 5 */
-        tmpShift |= ((fromNodes[1]>>6)&1)<<5; /* Row 6 */
-        tmpShift |= ((fromNodes[1]>>5)&1)<<6; /* Row 7 */
+        tmpShift |= ((fromNodes[1]>>6)&1)<<4; /* Row 5 */
+        tmpShift |= ((fromNodes[1]>>5)&1)<<5; /* Row 6 */
+        tmpShift |= (0)<<6; /* Row 7 */
         coreGlobals.swMatrix[8] = tmpShift;
 
     }
@@ -1335,6 +1335,7 @@ if ((locals.vblankCount % 2) == 0) {
 	tmpShift = 0;
 	tmpShift |= ((coreGlobals.lampMatrix[0]>>6)&1)<<7; // Dummy for Prep 2 yellow
 	tmpShift |= ((coreGlobals.lampMatrix[0]>>7)&1)<<6; // Dummy for Prep 2 green
+	tmpShift |= ((coreGlobals.swMatrix[6]>>3)&1)<<5; // Dummy switch Ramp Lock Entry
 	toNode[8] = tmpShift;
 
 
@@ -1804,6 +1805,19 @@ PINMAME_VIDEO_UPDATE(wpcdmd_update) {
     }
     *line = 0; /* to simplify antialiasing */
   }
+
+
+#ifdef RTMPIN
+	for (int yy = 0; yy < 33; yy++) {
+		for (int xx = 0; xx < 129; xx++) {
+			UINT8 pixel = ((float)coreGlobals.dotCol[yy+1][xx] / 3.0) * 255;
+			led_canvas_set_pixel(offscreen_canvas, xx, yy, pixel, 0, 0);  // only R no G or B
+		}
+	}
+	offscreen_canvas = led_matrix_swap_on_vsync(matrix, offscreen_canvas);
+#endif
+
+
   video_update_core_dmd(bitmap, cliprect, layout);
   return 0;
 }
