@@ -790,7 +790,7 @@ CFLAGS += -DLISY_VIDEO
 endif
 
 ifdef RTMPIN
-# RTM Pin made by Ralf, Tom, Michael
+# RTM Pin
 CFLAGS += -DRTMPIN
 endif
 

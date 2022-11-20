@@ -2,6 +2,7 @@
 
 #include <stdarg.h>
 #include <time.h>
+#include <curses.h>
 #include "driver.h"
 #include "cpu/m6809/m6809.h"
 #include "sndbrd.h"
@@ -1101,7 +1102,7 @@ static SWITCH_UPDATE(wpc) {
 /* This function is called once every frame (every 16 ms, 60 Hz).
    Ohne X11 und ohne sound (per padsp) kommen sogar 2 Aufrufe unmittelbar
    hintereinander, daher darf nur jeder 2. Aufruf zum senden des seriellen Frames genutzt werden. 
-   Mit Sound (per padsp) fehlen zwischendurch ein paar frames, ist aber unkritisch
+   Mit Sound (per padsp) fehlen zwischendurch ein paar frames, ist aber unkritisch */
 
 /* Receive switch status from nodes, write solnoids, flashers and lamps to nodes  */
 
@@ -1132,6 +1133,7 @@ if ((wpclocals.vblankCount % 2) == 0) {
 
 /* debug: printf("received byte 4: %u \n", fromNodes[3]);*/
 
+
 /* Template Dedicated switches:
  * left coin, center coin, right coin, fourth coin, escape, down, up, enter */
         tmpShift = 0;
@@ -1142,8 +1144,23 @@ if ((wpclocals.vblankCount % 2) == 0) {
 /*        tmpShift |= ((fromNodes[0]>>3)&1)<<3;
         tmpShift |= ((fromNodes[0]>>2)&1)<<2;
         tmpShift |= ((fromNodes[0]>>1)&1)<<1;
-        tmpShift |= ((fromNodes[0]>>0)&1)<<0;*/
-/*        coreGlobals.swMatrix[CORE_COINDOORSWCOL] = tmpShift; */ /* no more node-inputs available -> setup pin per VNC */
+        tmpShift |= ((fromNodes[0]>>0)&1)<<0;
+        coreGlobals.swMatrix[CORE_COINDOORSWCOL] = tmpShift;*/
+/* no more node-inputs available -> set per direct keyboard access. Ncurses required for non-blocking getch(), timeout(0) */
+	char ch = getch();
+/*	printf("Received Input: %c\n", ch);*/
+	if (ch == 'f') {
+		coreGlobals.swMatrix[CORE_COINDOORSWCOL] = 0x80;
+	} else if (ch == 'd') {
+		coreGlobals.swMatrix[CORE_COINDOORSWCOL] = 0x40;
+	} else if (ch == 's') {
+		coreGlobals.swMatrix[CORE_COINDOORSWCOL] = 0x20;
+	} else if (ch == 'a') {
+		coreGlobals.swMatrix[CORE_COINDOORSWCOL] = 0x10;
+	} else {
+		coreGlobals.swMatrix[CORE_COINDOORSWCOL] = 0x00;
+	}	
+
 
 /* Column 1: Row 1 = LSB; Row 8 = MSB */
         tmpShift = 0;
@@ -1509,9 +1526,8 @@ if ((wpclocals.vblankCount % 2) == 0) {
 } /* of if ((locals.vblankCount % 2) == 0)  */
 #endif
 
-
-#ifndef RTMPIN
-  if (inports) {
+#ifndef RTMPIN 
+   if (inports) {
     coreGlobals.swMatrix[CORE_COINDOORSWCOL] = inports[WPC_COMINPORT] & 0xff;
     /*-- check standard keys --*/
     if (core_gameData->wpc.comSw.start)
@@ -1601,6 +1617,8 @@ static MACHINE_INIT(wpc) {
 
 
 #ifdef RTMPIN
+	initscr(); /* ncurses for getch() */
+	timeout(0); /* ncurses for getch() nonblocking */
 
 /* init RGB panel */
 memset(&matrix_options, 0, sizeof(matrix_options));
@@ -1693,11 +1711,14 @@ static MACHINE_STOP(wpc) {
   sndbrd_0_exit();
   if (wpc_printfile)
     { mame_fclose(wpc_printfile); wpc_printfile = NULL; }
-}
 
 #ifdef RTMPIN
 	close(serbus);
+	endwin(); /* ncurses */
 #endif
+
+}
+
 
 
 /*-----------------------------------------------
